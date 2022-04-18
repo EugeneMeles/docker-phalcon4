@@ -1,0 +1,62 @@
+version: "3.7"
+
+services:
+  mariadb:
+    restart: always
+    image: mariadb:$MARIADB_TAG
+    container_name: "${PROJECT_NAME}_mariadb"
+    stop_grace_period: 30s
+    environment:
+      MYSQL_ROOT_PASSWORD: $DB_ROOT_PASSWORD
+      MYSQL_DATABASE: $DB_NAME
+      MYSQL_USER: $DB_USER
+      MYSQL_PASSWORD: $DB_PASSWORD
+    ports:
+      - "8989:3306"
+    volumes:
+      - ./mariadb/mysql:/var/lib/mysql
+
+  php:
+    restart: always
+    build:
+      context: ./php
+      dockerfile: Dockerfile
+      args:
+        - PHP_TAG=${PHP_TAG}
+    env_file:
+      - .env
+    container_name: "${PROJECT_NAME}_php"
+    working_dir: /phalcon/
+    volumes:
+      - ./php/php.ini://usr/local/etc/php/conf.d/php.ini
+      - ./phalcon:/phalcon
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  nginx:
+    restart: always
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+      args:
+        - NGINX_TAG=${NGINX_TAG}
+    env_file:
+      - .env
+    container_name: "${PROJECT_NAME}_nginx"
+    depends_on:
+      - php
+    volumes:
+      - ./phalcon:/phalcon
+      - ./nginx/site.conf:/etc/nginx/conf.d/site.conf
+    labels:
+      - "traefik.http.routers.${PROJECT_NAME}_custom_nginx.rule=Host(`${PROJECT_BASE_URL}`)"
+
+  traefik:
+    restart: always
+    image: traefik:v2.0
+    container_name: "${PROJECT_NAME}_traefik"
+    command: --api.insecure=true --providers.docker
+    ports:
+      - '80:80'
+      - '8080:8080' # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
